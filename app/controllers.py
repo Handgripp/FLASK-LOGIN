@@ -3,30 +3,10 @@ import jwt
 import datetime
 import re
 from functools import wraps
-from flask import Flask, request, jsonify, session
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.dialects.postgresql import UUID
+from flask import request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'thisissecret'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://admin:admin@localhost:5432/dbname'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    public_id = db.Column(UUID(as_uuid=True), unique=True, nullable=False)
-    name = db.Column(db.String(50))
-    email = db.Column(db.String(120))
-    password = db.Column(db.String(128))
-    admin = db.Column(db.Boolean)
-
-
-with app.app_context():
-    db.create_all()
+from models import db, User
+from main import app
 
 
 def is_valid_email(email):
@@ -48,13 +28,12 @@ def token_required(f):
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
             current_user = User.query.filter_by(public_id=data['public_id']).first()
+            if not current_user:
+                return jsonify({'message': 'User not found'}), 401
+            kwargs['current_user'] = current_user
+            return f(*args, **kwargs)
         except jwt.exceptions.DecodeError:
             return jsonify({'message': 'Token is invalid!'}), 401
-
-        if 'token' not in session or session['token'] != token:
-            return jsonify({'message': 'Token is no longer valid!'}), 401
-
-        return f(current_user, *args, **kwargs)
 
     return decorated
 
@@ -119,7 +98,7 @@ def create_user():
     hashed_password = generate_password_hash(data['password'], method='sha256')
 
     new_user = User(public_id=str(uuid.uuid4()), name=data['name'], email=data['email'], password=hashed_password,
-                    admin=False)
+                    admin=True)
     db.session.add(new_user)
     db.session.commit()
 
@@ -191,9 +170,6 @@ def update_user(current_user):
         hashed_password = generate_password_hash(data['password'], method='sha256')
         user.password = hashed_password
 
-    if data['name'] == user.name and data['email'] == user.email:
-        return jsonify({'message': 'No changes made'}), 400
-
     db.session.commit()
 
     return jsonify({'message': 'User updated successfully'})
@@ -215,17 +191,4 @@ def login():
         app.config['SECRET_KEY'],
         algorithm='HS256')
 
-    session['token'] = token
-
     return jsonify({'token': token})
-
-
-@app.route('/logout', methods=['POST'])
-@token_required
-def logout():
-    session.pop('token', None)
-    return jsonify({'message': 'Logged out successfully'})
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
