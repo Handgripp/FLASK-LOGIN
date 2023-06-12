@@ -1,17 +1,12 @@
 import uuid
 import jwt
 import datetime
-import re
 from functools import wraps
 from flask import request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User
 from main import app
-
-
-def is_valid_email(email):
-    email_pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(email_pattern, email) is not None
+from utils.validation_helpers import is_valid_email
 
 
 def token_required(f):
