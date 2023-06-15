@@ -1,13 +1,9 @@
-import uuid
 import jwt
-import datetime
 from functools import wraps
 from flask import request, jsonify
-from sqlalchemy import cast, UUID
-from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Todo
+from models import User
 from main import app
-from utils.validation_helpers import is_valid_email
+from repositories import UserRepository, TodoRepository
 
 
 def token_required(f):
@@ -34,111 +30,71 @@ def token_required(f):
     return decorated
 
 
-@app.route('/user', methods=['GET'])
+@app.route('/users', methods=['GET'])
 @token_required
 def get_all_users(current_user):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    users = User.query.all()
+    user_repo = UserRepository()
+    users = user_repo.get_all_users()
 
-    output = []
-
-    for user in users:
-        user_data = {}
-        user_data['id'] = str(user.id)
-        user_data['name'] = user.name
-        user_data['email'] = user.email
-        user_data['password'] = user.password
-        user_data['admin'] = user.admin
-        output.append(user_data)
-
-    return jsonify({'users': output})
+    return jsonify({'users': users})
 
 
-@app.route('/user/<id>', methods=['GET'])
+@app.route('/users/<id>', methods=['GET'])
 @token_required
 def get_one_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(id=id).first()
+    user_repo = UserRepository()
+    user_data = user_repo.get_one_user(id)
 
-    if not user:
+    if not user_data:
         return jsonify({'message': 'No user found!'})
-
-    user_data = {}
-    user_data['id'] = str(user.id)
-    user_data['name'] = user.name
-    user_data['email'] = user.email
-    user_data['password'] = user.password
-    user_data['admin'] = user.admin
 
     return jsonify({'user': user_data})
 
 
-@app.route('/user', methods=['POST'])
+@app.route('/users', methods=['POST'])
 def create_user():
     data = request.get_json()
 
     if not data or 'name' not in data or 'email' not in data or 'password' not in data:
         return jsonify({'error': 'Missing required fields'}), 400
 
-    existing_user = User.query.filter_by(name=data['name']).first()
-    if existing_user:
-        return jsonify({'error': 'User with that name already exists'}), 409
+    user_repo = UserRepository()
+    response = user_repo.create_user(data['name'], data['email'], data['password'])
 
-    if not is_valid_email(data['email']):
-        return jsonify({'error': 'Invalid email address'}), 400
-
-    hashed_password = generate_password_hash(data['password'], method='sha256')
-
-    new_user = User(id=str(uuid.uuid4()), name=data['name'], email=data['email'], password=hashed_password,
-                    admin=True)
-    db.session.add(new_user)
-    db.session.commit()
-
-    return jsonify({'message': 'New user created'})
+    return response
 
 
-@app.route('/user/<id>', methods=['PUT'])
+@app.route('/users/<id>', methods=['PUT'])
 @token_required
 def promote_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(id=id).first()
+    user_repo = UserRepository()
+    response = user_repo.promote_user(id)
 
-    if not user:
-        return jsonify({'message': 'No user found!'})
-
-    user.admin = True
-    db.session.commit()
-
-    return jsonify({'message': 'The user has been promoted!'})
+    return response
 
 
-@app.route('/user/<id>', methods=['DELETE'])
+@app.route('/users/<id>', methods=['DELETE'])
 @token_required
 def delete_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(id=id).first()
+    user_repo = UserRepository()
+    response = user_repo.delete_user(id)
 
-    if not user:
-        return jsonify({'message': 'No user found!'})
-
-    if user.admin:
-        return jsonify({'message': "You can't delete admin!"})
-
-    db.session.delete(user)
-    db.session.commit()
-
-    return jsonify({'message': 'The user has been deleted!'})
+    return response
 
 
-@app.route('/user', methods=['PUT'])
+@app.route('/users', methods=['PUT'])
 @token_required
 def update_user(current_user):
     data = request.get_json()
@@ -146,29 +102,10 @@ def update_user(current_user):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    user = User.query.filter_by(id=current_user.id).first()
+    user_repo = UserRepository()
+    response = user_repo.update_user(current_user.id, data)
 
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    if 'name' in data:
-        existing_user = User.query.filter(User.name == data['name'], User.id != user.id).first()
-        if existing_user:
-            return jsonify({'error': 'User with that name already exists'}), 409
-        user.name = data['name']
-
-    if 'email' in data:
-        user.email = data['email']
-        if not is_valid_email(data['email']):
-            return jsonify({'error': 'Invalid email address'}), 400
-
-    if 'password' in data:
-        hashed_password = generate_password_hash(data['password'], method='sha256')
-        user.password = hashed_password
-
-    db.session.commit()
-
-    return jsonify({'message': 'User updated successfully'})
+    return response
 
 
 @app.route('/login', methods=['POST'])
@@ -177,91 +114,63 @@ def login():
     if not data or not data['name'] or not data['password']:
         return jsonify({'message': 'Invalid credentials'}), 401
 
-    user = User.query.filter_by(name=data['name']).first()
+    user_repo = UserRepository()
+    response = user_repo.login(data['name'], data['password'])
 
-    if not user or not check_password_hash(user.password, data['password']):
-        return jsonify({'message': 'Invalid credentials'}), 401
-
-    token = jwt.encode(
-        {'id': str(user.id), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)},
-        app.config['SECRET_KEY'],
-        algorithm='HS256')
-
-    return jsonify({'token': token})
+    return response
 
 
-@app.route('/todo', methods=['GET'])
+@app.route('/todos', methods=['GET'])
 @token_required
 def get_all_todos(current_user):
-    todos = Todo.query.filter_by(user_id=current_user.id).all()
-
-    output = []
-
-    for todo in todos:
-        todo_data = {}
-        todo_data['id'] = todo.id
-        todo_data['text'] = todo.text
-        todo_data['is_completed'] = todo.is_completed
-        output.append(todo_data)
-
-    return jsonify({'todos': output})
-
-
-@app.route('/todo/<todo_id>', methods=['GET'])
-@token_required
-def get_one_todo(current_user, todo_id):
-    todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first()
+    todo_repo = TodoRepository()
+    todo = todo_repo.get_all_todos(current_user.id)
 
     if not todo:
-        return jsonify({'message': "No todo found"})
+        return jsonify({'message': 'No todo found'})
 
-    todo_data = {}
-    todo_data['id'] = todo.id
-    todo_data['text'] = todo.text
-    todo_data['is_completed'] = todo.is_completed
-
-    return jsonify(todo_data)
+    return jsonify({'user': todo})
 
 
-@app.route('/todo', methods=['POST'])
+@app.route('/todos/<todo_id>', methods=['GET'])
+@token_required
+def get_one_todo(current_user, todo_id):
+    todo_repo = TodoRepository()
+    todo = todo_repo.get_one_todo(todo_id, current_user.id)
+
+    if not todo:
+        return jsonify({'message': 'No todo found'})
+
+    return jsonify({'todo': todo})
+
+
+@app.route('/todos', methods=['POST'])
 @token_required
 def create_todo(current_user):
     data = request.get_json()
 
-    new_todo = Todo(
-        text=data['text'],
-        is_completed=False,
-        user_id=cast(current_user.id, UUID(as_uuid=True))
-    )
-    db.session.add(new_todo)
-    db.session.commit()
+    if not data or 'text' not in data:
+        return jsonify({'error': 'Missing required fields'}), 400
 
-    return jsonify({'message': "Todo created!"})
+    todo_repo = TodoRepository()
+    todo_repo.create_todo(data['text'], current_user.id)
+
+    return jsonify({'message': 'Todo created!'})
 
 
-@app.route('/todo/<todo_id>', methods=['PUT'])
+@app.route('/todos/<todo_id>', methods=['PUT'])
 @token_required
 def update_todo(current_user, todo_id):
-    todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first()
+    todo_repo = TodoRepository()
+    response = todo_repo.update_todo(todo_id, current_user.id)
 
-    if not todo:
-        return jsonify({'message': "No todo found"})
-
-    todo.is_completed = True
-    db.session.commit()
-
-    return jsonify({'message': "Todo item has been completed!"})
+    return response
 
 
-@app.route('/todo/<todo_id>', methods=['DELETE'])
+@app.route('/todos/<todo_id>', methods=['DELETE'])
 @token_required
 def delete_todo(current_user, todo_id):
-    todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first()
+    todo_repo = TodoRepository()
+    response = todo_repo.delete_todo(todo_id, current_user.id)
 
-    if not todo:
-        return jsonify({'message': "No todo found"})
-
-    db.session.delete(todo)
-    db.session.commit()
-
-    return jsonify({'message': 'Todo item deleted!'})
+    return response
