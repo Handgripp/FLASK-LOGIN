@@ -3,6 +3,7 @@ import jwt
 import datetime
 from functools import wraps
 from flask import request, jsonify
+from sqlalchemy import cast, UUID
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Todo
 from main import app
@@ -22,7 +23,7 @@ def token_required(f):
 
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            current_user = User.query.filter_by(public_id=data['public_id']).first()
+            current_user = User.query.filter_by(id=data['id']).first()
             if not current_user:
                 return jsonify({'message': 'User not found'}), 401
             kwargs['current_user'] = current_user
@@ -45,7 +46,7 @@ def get_all_users(current_user):
 
     for user in users:
         user_data = {}
-        user_data['public_id'] = str(user.public_id)
+        user_data['id'] = str(user.id)
         user_data['name'] = user.name
         user_data['email'] = user.email
         user_data['password'] = user.password
@@ -55,19 +56,19 @@ def get_all_users(current_user):
     return jsonify({'users': output})
 
 
-@app.route('/user/<public_id>', methods=['GET'])
+@app.route('/user/<id>', methods=['GET'])
 @token_required
-def get_one_user(current_user, public_id):
+def get_one_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(public_id=public_id).first()
+    user = User.query.filter_by(id=id).first()
 
     if not user:
         return jsonify({'message': 'No user found!'})
 
     user_data = {}
-    user_data['public_id'] = str(user.public_id)
+    user_data['id'] = str(user.id)
     user_data['name'] = user.name
     user_data['email'] = user.email
     user_data['password'] = user.password
@@ -92,7 +93,7 @@ def create_user():
 
     hashed_password = generate_password_hash(data['password'], method='sha256')
 
-    new_user = User(public_id=str(uuid.uuid4()), name=data['name'], email=data['email'], password=hashed_password,
+    new_user = User(id=str(uuid.uuid4()), name=data['name'], email=data['email'], password=hashed_password,
                     admin=True)
     db.session.add(new_user)
     db.session.commit()
@@ -100,13 +101,13 @@ def create_user():
     return jsonify({'message': 'New user created'})
 
 
-@app.route('/user/<public_id>', methods=['PUT'])
+@app.route('/user/<id>', methods=['PUT'])
 @token_required
-def promote_user(current_user, public_id):
+def promote_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(public_id=public_id).first()
+    user = User.query.filter_by(id=id).first()
 
     if not user:
         return jsonify({'message': 'No user found!'})
@@ -117,13 +118,13 @@ def promote_user(current_user, public_id):
     return jsonify({'message': 'The user has been promoted!'})
 
 
-@app.route('/user/<public_id>', methods=['DELETE'])
+@app.route('/user/<id>', methods=['DELETE'])
 @token_required
-def delete_user(current_user, public_id):
+def delete_user(current_user, id):
     if not current_user.admin:
         return jsonify({'message': 'Cannot perform that function!'})
 
-    user = User.query.filter_by(public_id=public_id).first()
+    user = User.query.filter_by(id=id).first()
 
     if not user:
         return jsonify({'message': 'No user found!'})
@@ -145,13 +146,13 @@ def update_user(current_user):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    user = User.query.filter_by(public_id=current_user.public_id).first()
+    user = User.query.filter_by(id=current_user.id).first()
 
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
     if 'name' in data:
-        existing_user = User.query.filter(User.name == data['name'], User.public_id != user.public_id).first()
+        existing_user = User.query.filter(User.name == data['name'], User.id != user.id).first()
         if existing_user:
             return jsonify({'error': 'User with that name already exists'}), 409
         user.name = data['name']
@@ -182,7 +183,7 @@ def login():
         return jsonify({'message': 'Invalid credentials'}), 401
 
     token = jwt.encode(
-        {'public_id': str(user.public_id), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)},
+        {'id': str(user.id), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)},
         app.config['SECRET_KEY'],
         algorithm='HS256')
 
@@ -200,7 +201,7 @@ def get_all_todos(current_user):
         todo_data = {}
         todo_data['id'] = todo.id
         todo_data['text'] = todo.text
-        todo_data['complete'] = todo.complete
+        todo_data['is_completed'] = todo.is_completed
         output.append(todo_data)
 
     return jsonify({'todos': output})
@@ -217,7 +218,7 @@ def get_one_todo(current_user, todo_id):
     todo_data = {}
     todo_data['id'] = todo.id
     todo_data['text'] = todo.text
-    todo_data['complete'] = todo.complete
+    todo_data['is_completed'] = todo.is_completed
 
     return jsonify(todo_data)
 
@@ -227,7 +228,11 @@ def get_one_todo(current_user, todo_id):
 def create_todo(current_user):
     data = request.get_json()
 
-    new_todo = Todo(text=data['text'], complete=False, user_id=current_user.id)
+    new_todo = Todo(
+        text=data['text'],
+        is_completed=False,
+        user_id=cast(current_user.id, UUID(as_uuid=True))
+    )
     db.session.add(new_todo)
     db.session.commit()
 
@@ -236,13 +241,13 @@ def create_todo(current_user):
 
 @app.route('/todo/<todo_id>', methods=['PUT'])
 @token_required
-def complete_todo(current_user, todo_id):
+def update_todo(current_user, todo_id):
     todo = Todo.query.filter_by(id=todo_id, user_id=current_user.id).first()
 
     if not todo:
         return jsonify({'message': "No todo found"})
 
-    todo.complete = True
+    todo.is_completed = True
     db.session.commit()
 
     return jsonify({'message': "Todo item has been completed!"})
