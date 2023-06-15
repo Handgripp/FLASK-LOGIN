@@ -56,8 +56,6 @@ class UserRepository:
         db.session.add(new_user)
         db.session.commit()
 
-        return jsonify({'message': 'New user created'})
-
     @staticmethod
     def promote_user(user_id):
         user = User.query.filter_by(id=user_id).first()
@@ -67,8 +65,6 @@ class UserRepository:
 
         user.admin = True
         db.session.commit()
-
-        return jsonify({'message': 'The user has been promoted!'})
 
     @staticmethod
     def delete_user(user_id):
@@ -82,8 +78,6 @@ class UserRepository:
 
         db.session.delete(user)
         db.session.commit()
-
-        return jsonify({'message': 'The user has been deleted!'})
 
     @staticmethod
     def update_user(user_id, data):
@@ -108,8 +102,6 @@ class UserRepository:
 
         db.session.commit()
 
-        return jsonify({'message': 'User updated successfully'})
-
     @staticmethod
     def login(name, password):
         user = User.query.filter_by(name=name).first()
@@ -121,7 +113,7 @@ class UserRepository:
             app.config['SECRET_KEY'],
             algorithm='HS256')
 
-        return jsonify({'token': token})
+        return token
 
 
 class TodoRepository:
@@ -181,8 +173,6 @@ class TodoRepository:
         todo.is_completed = True
         db.session.commit()
 
-        return jsonify({'message': "Todo item has been completed!"})
-
     @staticmethod
     def delete_todo(todo_id, user_id):
         todo = Todo.query.filter_by(id=todo_id, user_id=user_id).first()
@@ -192,5 +182,3 @@ class TodoRepository:
 
         db.session.delete(todo)
         db.session.commit()
-
-        return jsonify({'message': "Todo item has been deleted"})

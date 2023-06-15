@@ -34,7 +34,7 @@ def token_required(f):
 @token_required
 def get_all_users(current_user):
     if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
+        return jsonify({'message': 'Cannot perform that function!'}), 403
 
     user_repo = UserRepository()
     users = user_repo.get_all_users()
@@ -46,15 +46,15 @@ def get_all_users(current_user):
 @token_required
 def get_one_user(current_user, id):
     if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
+        return jsonify({'message': 'Cannot perform that function!'}), 403
 
     user_repo = UserRepository()
     user_data = user_repo.get_one_user(id)
 
     if not user_data:
-        return jsonify({'message': 'No user found!'})
+        return jsonify({'message': 'No user found!'}), 404
 
-    return jsonify({'user': user_data})
+    return jsonify({'user': user_data}), 200
 
 
 @app.route('/users', methods=['POST'])
@@ -65,33 +65,33 @@ def create_user():
         return jsonify({'error': 'Missing required fields'}), 400
 
     user_repo = UserRepository()
-    response = user_repo.create_user(data['name'], data['email'], data['password'])
+    user_repo.create_user(data['name'], data['email'], data['password'])
 
-    return response
+    return jsonify({'message': 'New user created'}), 201
 
 
 @app.route('/users/<id>', methods=['PUT'])
 @token_required
 def promote_user(current_user, id):
     if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
+        return jsonify({'message': 'Cannot perform that function!'}), 403
 
     user_repo = UserRepository()
-    response = user_repo.promote_user(id)
+    user_repo.promote_user(id)
 
-    return response
+    return jsonify({'message': 'The user has been promoted!'}), 200
 
 
 @app.route('/users/<id>', methods=['DELETE'])
 @token_required
 def delete_user(current_user, id):
     if not current_user.admin:
-        return jsonify({'message': 'Cannot perform that function!'})
+        return jsonify({'message': 'Cannot perform that function!'}), 403
 
     user_repo = UserRepository()
-    response = user_repo.delete_user(id)
+    user_repo.delete_user(id)
 
-    return response
+    return jsonify({'message': 'The user has been deleted!'}), 200
 
 
 @app.route('/users', methods=['PUT'])
@@ -103,9 +103,9 @@ def update_user(current_user):
         return jsonify({'error': 'No data provided'}), 400
 
     user_repo = UserRepository()
-    response = user_repo.update_user(current_user.id, data)
+    user_repo.update_user(current_user.id, data)
 
-    return response
+    return jsonify({'message': 'User updated successfully'}), 200
 
 
 @app.route('/login', methods=['POST'])
@@ -115,9 +115,9 @@ def login():
         return jsonify({'message': 'Invalid credentials'}), 401
 
     user_repo = UserRepository()
-    response = user_repo.login(data['name'], data['password'])
+    token = user_repo.login(data['name'], data['password'])
 
-    return response
+    return jsonify({'token': token}), 200
 
 
 @app.route('/todos', methods=['GET'])
@@ -127,9 +127,9 @@ def get_all_todos(current_user):
     todo = todo_repo.get_all_todos(current_user.id)
 
     if not todo:
-        return jsonify({'message': 'No todo found'})
+        return jsonify({'message': 'No todos found'}), 404
 
-    return jsonify({'user': todo})
+    return jsonify({'user': todo}), 200
 
 
 @app.route('/todos/<todo_id>', methods=['GET'])
@@ -139,9 +139,9 @@ def get_one_todo(current_user, todo_id):
     todo = todo_repo.get_one_todo(todo_id, current_user.id)
 
     if not todo:
-        return jsonify({'message': 'No todo found'})
+        return jsonify({'message': 'No todo found'}), 404
 
-    return jsonify({'todo': todo})
+    return jsonify({'todo': todo}), 200
 
 
 @app.route('/todos', methods=['POST'])
@@ -155,22 +155,22 @@ def create_todo(current_user):
     todo_repo = TodoRepository()
     todo_repo.create_todo(data['text'], current_user.id)
 
-    return jsonify({'message': 'Todo created!'})
+    return jsonify({'message': 'Todo created!'}), 201
 
 
 @app.route('/todos/<todo_id>', methods=['PUT'])
 @token_required
 def update_todo(current_user, todo_id):
     todo_repo = TodoRepository()
-    response = todo_repo.update_todo(todo_id, current_user.id)
+    todo_repo.update_todo(todo_id, current_user.id)
 
-    return response
+    return jsonify({'message': "Todo item has been completed!"}), 200
 
 
 @app.route('/todos/<todo_id>', methods=['DELETE'])
 @token_required
 def delete_todo(current_user, todo_id):
     todo_repo = TodoRepository()
-    response = todo_repo.delete_todo(todo_id, current_user.id)
+    todo_repo.delete_todo(todo_id, current_user.id)
 
-    return response
+    return jsonify({'message': "Todo item has been deleted"}), 200
