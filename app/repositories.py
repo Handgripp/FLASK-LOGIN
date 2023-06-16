@@ -1,11 +1,6 @@
-import datetime
 import uuid
-import jwt
-from werkzeug.security import generate_password_hash, check_password_hash
-from main import app
+from werkzeug.security import generate_password_hash
 from models import User, Todo, db
-from flask import jsonify
-from utils.validation_helpers import is_valid_email
 
 
 class UserRepository:
@@ -42,78 +37,28 @@ class UserRepository:
 
     @staticmethod
     def create_user(name, email, password):
-        existing_user = User.query.filter_by(name=name).first()
-        if existing_user:
-            return jsonify({'error': 'User with that name already exists'}), 409
-
-        if not is_valid_email(email):
-            return jsonify({'error': 'Invalid email address'}), 400
-
         hashed_password = generate_password_hash(password, method='sha256')
 
-        new_user = User(id=str(uuid.uuid4()), name=name, email=email, password=hashed_password,
-                        admin=False)
+        new_user = User(id=str(uuid.uuid4()), name=name, email=email, password=hashed_password, admin=False)
         db.session.add(new_user)
         db.session.commit()
 
     @staticmethod
-    def promote_user(user_id):
-        user = User.query.filter_by(id=user_id).first()
-
-        if not user:
-            return jsonify({'message': 'No user found!'})
-
+    def promote_user(user):
         user.admin = True
         db.session.commit()
 
     @staticmethod
-    def delete_user(user_id):
-        user = User.query.filter_by(id=user_id).first()
-
-        if not user:
-            return jsonify({'message': 'No user found!'})
-
-        if user.admin:
-            return jsonify({'message': "You can't delete admin!"})
-
+    def delete_user(user):
         db.session.delete(user)
         db.session.commit()
 
     @staticmethod
-    def update_user(user_id, data):
-        user = User.query.filter_by(id=user_id).first()
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-
-        if 'name' in data:
-            existing_user = User.query.filter(User.name == data['name'], User.id != user.id).first()
-            if existing_user:
-                return jsonify({'error': 'User with that name already exists'}), 409
-            user.name = data['name']
-
-        if 'email' in data:
-            user.email = data['email']
-            if not is_valid_email(data['email']):
-                return jsonify({'error': 'Invalid email address'}), 400
-
-        if 'password' in data:
-            hashed_password = generate_password_hash(data['password'], method='sha256')
-            user.password = hashed_password
-
+    def update_user(user, data, hashed_password):
+        user.name = data['name']
+        user.email = data['email']
+        user.password = hashed_password
         db.session.commit()
-
-    @staticmethod
-    def login(name, password):
-        user = User.query.filter_by(name=name).first()
-        if not user or not check_password_hash(user.password, password):
-            return jsonify({'message': 'Invalid credentials'}), 401
-
-        token = jwt.encode(
-            {'id': str(user.id), 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)},
-            app.config['SECRET_KEY'],
-            algorithm='HS256')
-
-        return token
 
 
 class TodoRepository:
@@ -136,16 +81,11 @@ class TodoRepository:
     def get_one_todo(todo_id, user_id):
         todo = Todo.query.filter_by(id=todo_id, user_id=user_id).first()
 
-        if not todo:
-            return None
-
-        todo_data = {
+        return {
             'id': todo.id,
             'text': todo.text,
             'is_completed': todo.is_completed
         }
-
-        return todo_data
 
     @staticmethod
     def create_todo(text, user_id):
@@ -164,21 +104,11 @@ class TodoRepository:
         }
 
     @staticmethod
-    def update_todo(todo_id, user_id):
-        todo = Todo.query.filter_by(id=todo_id, user_id=user_id).first()
-
-        if not todo:
-            return jsonify({'message': "No todo found"})
-
+    def update_todo(todo):
         todo.is_completed = True
         db.session.commit()
 
     @staticmethod
-    def delete_todo(todo_id, user_id):
-        todo = Todo.query.filter_by(id=todo_id, user_id=user_id).first()
-
-        if not todo:
-            return jsonify({'message': "No todo found"})
-
+    def delete_todo(todo):
         db.session.delete(todo)
         db.session.commit()
