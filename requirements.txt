@@ -2,5 +2,7 @@ flask~=2.3.2
 flask_sqlalchemy
 psycopg2-binary
 PyJWT~=2.7.0
-SQLAlchemy~=2.0.15
+SQLAlchemy==2.0.16
 Werkzeug==2.3.6
+
+pytest~=7.3.2

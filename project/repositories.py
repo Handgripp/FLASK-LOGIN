@@ -1,6 +1,6 @@
 import uuid
 from werkzeug.security import generate_password_hash
-from models import User, Todo, db
+from .models import User, Todo, db
 
 
 class UserRepository:
